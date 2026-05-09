@@ -1,0 +1,2 @@
+[console_scripts]
+spxcutdb = spherex_cutoutdb.cli:main

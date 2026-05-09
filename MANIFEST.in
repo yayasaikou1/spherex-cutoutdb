@@ -1,0 +1,31 @@
+include README.md
+include LICENSE
+include CHANGELOG.md
+include RELEASE.md
+include pyproject.toml
+include mkdocs.yml
+include DEFAULT_CONFIG.yaml
+include batch_config.example.yaml
+recursive-include src/spherex_cutoutdb *.sql
+include docs/CLI_WORKFLOW.md
+include docs/DATA_MODEL.md
+include docs/DOWNLOAD_STRATEGY.md
+include docs/INSTALL_HELP.md
+include docs/INTEGRATED_WORKFLOW_TUTORIAL.md
+include docs/PHOTOMETRY_TUTORIAL.md
+include docs/PROJECT_DESIGN.md
+include docs/VALIDATION_PLAN.md
+include docs/batch_runs.md
+include docs/calibration.md
+include docs/cli_reference.md
+include docs/config_reference.md
+include docs/index.md
+include docs/output_schema.md
+include docs/qa_flags.md
+include docs/quickstart.md
+include docs/release_process.md
+include docs/release_notes.md
+include docs/science_method.md
+include docs/troubleshooting.md
+recursive-include examples *.csv *.yaml *.sh *.xml
+recursive-include tests *.py *.csv *.xml

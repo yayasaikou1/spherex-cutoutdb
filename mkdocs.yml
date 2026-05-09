@@ -1,0 +1,21 @@
+site_name: spherex-cutoutdb
+site_description: SPHEREx catalog-to-spectrum cutout database and conservative PSF forced-photometry workflow
+repo_url: https://github.com/<OWNER>/<REPO>
+theme:
+  name: mkdocs
+nav:
+  - Home: index.md
+  - Quickstart: quickstart.md
+  - Integrated Workflow: INTEGRATED_WORKFLOW_TUTORIAL.md
+  - Photometry Tutorial: PHOTOMETRY_TUTORIAL.md
+  - CLI Reference: cli_reference.md
+  - Configuration: config_reference.md
+  - Calibration: calibration.md
+  - Science Method: science_method.md
+  - Output Schema: output_schema.md
+  - QA Flags: qa_flags.md
+  - Batch Runs: batch_runs.md
+  - Troubleshooting: troubleshooting.md
+  - Release Notes: release_notes.md
+  - Release Process: release_process.md
+

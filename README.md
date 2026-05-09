@@ -1,0 +1,698 @@
+# spherex-cutoutdb
+
+Release candidate: `1.0.0rc1`.
+
+`spherex-cutoutdb` maintains a local SQLite-backed database of SPHEREx
+Level-2 Spectral Image MEF cutouts for a source catalog. It discovers parent
+products through the official IRSA SIA2 service, plans documented on-prem IRSA
+cutout URLs, downloads missing cutouts, validates FITS metadata, and exports
+manifests.
+
+The package also includes a downstream SPHEREx photometry layer. Photometry
+uses the downloader's validated cutouts and never creates its own downloader.
+It plans work before network activity, resolves the required calibration
+products, performs fixed-position point-source PSF forced photometry, writes
+per-source science products, and can delete temporary successful cutouts only
+after durable outputs validate.
+
+## Install
+
+Install the tested release-candidate wheel:
+
+```bash
+python -m pip install spherex_cutoutdb-1.0.0rc1-py3-none-any.whl
+```
+
+Development install from this repository:
+
+```bash
+python -m pip install -e ".[dev]"
+```
+
+Then confirm the CLI is available:
+
+```bash
+spxcutdb --help
+```
+
+For platform-specific conda setup on macOS, WSL/Ubuntu, and CentOS 7.9, see
+[docs/INSTALL_HELP.md](docs/INSTALL_HELP.md).
+
+## Quick Start
+
+Start from a CSV catalog named `input_catalog.csv`. The recommended release
+schema is:
+
+```csv
+Name,RA_deg,DEC_deg,cutout_size_arcsec
+DemoTarget,150.116321,2.205830,180
+```
+
+`Name` is the durable target identity and the source of per-target output
+filenames. It must be present, non-empty, and unique unless you explicitly
+allow duplicate IDs in config. `RA_deg` and `DEC_deg` are ICRS coordinates in
+degrees. `cutout_size_arcsec` is optional; when present it overrides the
+default cutout size for that row.
+
+Create and validate the project before network work:
+
+```bash
+spxcutdb init ./ --catalog input_catalog.csv --target-id-column Name
+spxcutdb config show --project ./ --effective --hash
+spxcutdb config validate --project ./
+spxcutdb validate --project ./ --catalog input_catalog.csv
+spxcutdb discover --project ./ --resume
+```
+
+`discover` does not accept `--catalog`; it reads `catalog.path` from
+`.//spherex_cutoutdb.yaml`, which `init --catalog input_catalog.csv`
+writes for you. To discover against a different catalog, edit that project
+config or recreate the project config with `spxcutdb init ... --force`.
+
+Register the required photometry calibration products before the integrated
+workflow submits any cutouts to the downloader:
+
+```bash
+spxcutdb calibration sync --project ./ --product required --download-source cloud --max-workers 8
+spxcutdb calibration validate --project ./
+spxcutdb calibration status --project ./
+```
+
+Run the integrated production workflow:
+
+```bash
+spxcutdb run \
+  --project ./ \
+  --catalog input_catalog.csv \
+  --download-missing \
+  --resume \
+  --cleanup-cutouts success-after-source \
+  --qa-level standard
+spxcutdb summary --project ./
+```
+
+The integrated manager plans photometry first, skips current valid
+measurements before network work, sends missing cutouts to the existing
+file-level downloader in batches, fits validated cutouts as they arrive, writes
+per-source outputs with freshness manifests, and deletes temporary successful
+cutouts only after those outputs validate.
+
+For a packaged smoke catalog, use [examples/input_catalog.csv](examples/input_catalog.csv).
+For a batch preset, use [batch_config.example.yaml](batch_config.example.yaml)
+with `--batch-config batch_config.example.yaml`.
+
+For a fresh one-command run, discovery and calibration sync can be requested by
+the integrated command itself:
+
+```bash
+spxcutdb run \
+  --project ./ \
+  --catalog input_catalog.csv \
+  --discover \
+  --sync-calibration \
+  --download-missing \
+  --resume \
+  --cleanup-cutouts success-after-source \
+  --qa-level standard
+```
+
+For update runs after new SPHEREx products appear:
+
+```bash
+spxcutdb run \
+  --project ./ \
+  --catalog input_catalog.csv \
+  --update \
+  --download-missing \
+  --resume \
+  --cleanup-cutouts success-after-source
+```
+
+If outputs are missing or stale but current DB measurements exist, rebuild
+outputs without redownloading cutouts:
+
+```bash
+spxcutdb summary --project ./ --rebuild-missing-outputs
+```
+
+For the full operator tutorial, see
+[docs/INTEGRATED_WORKFLOW_TUTORIAL.md](docs/INTEGRATED_WORKFLOW_TUTORIAL.md).
+For downstream-only photometry commands and planner-state troubleshooting, see
+[docs/PHOTOMETRY_TUTORIAL.md](docs/PHOTOMETRY_TUTORIAL.md).
+
+## Default Config
+
+`spxcutdb init` writes `spherex_cutoutdb.yaml` into the project directory. The
+generated config uses the official IRSA SIA2 endpoint and defaults to:
+
+- discovery collections: `spherex_qr2`, `spherex_qr2_deep`
+- excluded collection: `spherex_qr2_cal`
+- cutout access method: on-prem parent `access_url` plus `center=<ra>,<dec>&size=<size_deg>`
+- file-level download workers: `64`
+- per-host download concurrency: `2048`
+- per-host rate limit: `4096` request starts/sec
+- direct photometry worker processes: `64`
+- integrated fit workers: `32`
+- max in-flight cutouts: `512`
+- max live cutout storage: `10 GB`
+- max open FITS files: `512`
+- output roots: `db/`, `data/`, `manifests/`, `logs/`, `cache/`, `results/`
+- required photometry calibration: `spectral_wcs`, `solid_angle_pixel_map`
+- photometry output schema: `photometry_native_v6`
+- photometry QA output: PNG
+- cleanup: delete successful temporary cutouts only after current output manifests validate
+
+A template is also kept at [DEFAULT_CONFIG.yaml](DEFAULT_CONFIG.yaml).
+
+These are high-throughput package defaults. `spxcutdb photometry run
+--qa-level full` still auto-caps source concurrency when
+`--max-source-workers` is not explicitly passed, and uses `--qa-workers` or
+`photometry.qa.full_plot_workers` for bounded PNG rendering.
+
+When `--catalog` points to an existing catalog, `init` infers common column
+names. For the integrated workflow, pass `--target-id-column Name` so the
+catalog `Name` is both durable source identity and display/output name:
+
+```yaml
+catalog:
+  source_id_column: Name
+  source_name_column: Name
+  ra_column: RA_deg
+  dec_column: DEC_deg
+  optional_columns:
+    source_type: Obj. Type
+    notes: Remarks
+```
+
+Review the exact effective configuration before long runs:
+
+```bash
+spxcutdb config show --project ./ --effective --hash
+spxcutdb config validate --project ./
+spxcutdb config diff --project ./ --against-defaults
+```
+
+## Project Config vs Batch Config
+
+`.//spherex_cutoutdb.yaml` is the persistent project configuration.
+It is loaded for every command by default, unless you pass `--config PATH`.
+It should hold durable choices: project paths, catalog column mapping,
+discovery collections, calibration policy/cache, required calibration products,
+photometry schema/code versions, and science thresholds.
+
+`batch_config.example.yaml` is the packaged run-preset template. It is used
+only when you pass `--batch-config PATH`, and it should hold temporary batch
+choices: workflow toggles, runtime/storage limits, cleanup policy, QA level,
+and archive pacing.
+It is not written back into `spherex_cutoutdb.yaml`.
+
+For this command:
+
+```bash
+spxcutdb run \
+  --project ./ \
+  --catalog input_catalog.csv \
+  --batch-config batch_config.example.yaml \
+  --download-missing \
+  --resume \
+  --cleanup-cutouts success-after-source
+```
+
+the effective config is resolved in this order:
+
+1. built-in package defaults;
+2. `.//spherex_cutoutdb.yaml`;
+3. `batch_config.example.yaml`;
+4. explicit CLI flags.
+
+The explicit flags above set `catalog.path` to `input_catalog.csv`,
+`workflow.download_missing` to `true`, and `cleanup.cutouts` to
+`success-after-source`, even if the YAML files say something else. `--resume`
+is a run-control flag, not a persistent config value.
+
+Preview the exact merged config for a batch run before launching it:
+
+```bash
+spxcutdb config show --project ./ --batch-config batch_config.example.yaml --effective --hash
+spxcutdb config validate --project ./ --batch-config batch_config.example.yaml
+spxcutdb config diff --project ./ --batch-config batch_config.example.yaml --against-defaults
+```
+
+## Calibration Setup
+
+Photometry requires detector-keyed calibration products:
+
+- `spectral_wcs`: FITS product with `CWAVE` and `CBAND` HDUs
+- `solid_angle_pixel_map`: FITS image product with positive pixel solid angles
+
+The calibration resolver records path, detector, version/date metadata, SHA256,
+validation status, and provenance in SQLite. By default the resolver requires an
+exact QR2 match and fails closed if a required product is missing.
+
+The relevant config block is:
+
+```yaml
+calibration:
+  release: QR2
+  required_products: [spectral_wcs, solid_angle_pixel_map]
+  cache_root: cache/calibrations
+  version_policy: exact_required
+  allow_latest_fallback: false
+  validate_on_use: true
+  download_source: cloud   # tutorial/default operator route
+  prefer_cloud: true
+  cloud_bucket: nasa-irsa-spherex
+  cloud_region: us-east-1
+  cloud_prefix: "{release_lower}"
+  official_ibe_base_url: https://irsa.ipac.caltech.edu/ibe/data/spherex/{release_lower}
+  official_ibe_listing_url: https://irsa.ipac.caltech.edu/ibe/dir/list/spherex/{release_lower}
+  use_official_ibe: true
+  download_max_workers: 64
+  download_timeout_sec: 180
+  product_urls: {}
+```
+
+The tutorial/default operator command uses the public AWS Open Data bucket:
+
+```text
+s3://nasa-irsa-spherex/qr2/spectral_wcs/
+s3://nasa-irsa-spherex/qr2/solid_angle_pixel_map/
+```
+
+or from the documented IRSA IBE directory layout:
+
+```text
+https://irsa.ipac.caltech.edu/ibe/data/spherex/qr2/spectral_wcs/cal-wcs-v.../<detector>/
+https://irsa.ipac.caltech.edu/ibe/data/spherex/qr2/solid_angle_pixel_map/cal-sapm-v.../<detector>/
+```
+
+`product_urls` may contain templates for mirrors or custom staging. The sync
+command expands `{detector}`, `{detector_id}`, `{release}`, `{release_lower}`,
+and `{product_type}`:
+
+```yaml
+calibration:
+  product_urls:
+    spectral_wcs: "https://example.invalid/{release_lower}/spectral_wcs/D{detector}/spectral_wcs_D{detector}.fits"
+    solid_angle_pixel_map: "https://example.invalid/{release_lower}/solid_angle/D{detector}/solid_angle_D{detector}.fits"
+```
+
+For local staging or tests, a URL template can also point at a local file path
+or `file://` URL. If `--detectors` is omitted, calibration sync uses detectors
+already present in the database, falling back to detectors `1..6`.
+
+If you already have a local calibration tree, import it instead of downloading:
+
+```bash
+spxcutdb calibration sync --project ./ --product required --input-dir /path/to/spherex_calibration
+```
+
+To restrict the bootstrap to explicit detectors, add `--detectors`:
+
+```bash
+spxcutdb calibration sync --project ./ --product required --download-source cloud --max-workers 8 --detectors 1,2,3,4,5,6
+```
+
+`spxcutdb calib ...` is an alias for `spxcutdb calibration ...`.
+
+## Photometry Workflow
+
+Photometry is a downstream consumer of validated local cutouts. The top-level
+integrated `spxcutdb run` command is the production path because it uses the
+existing downloader-to-photometry event seam while still letting the workflow
+skip valid measurements, rebuild stale outputs, and clean temporary cutouts.
+
+The lower-level `spxcutdb photometry ...` commands remain useful for debugging
+or measuring already-downloaded cutouts. Those commands do not download missing
+cutouts.
+
+The photometry planner classifies each source/product/cutout candidate before
+measurement:
+
+- `photometry_valid`: matching result already exists; skip measurement
+- `cutout_valid_measurement_missing`: measure the existing valid cutout in place
+- `cutout_missing_or_invalid`: blocked input; run `spxcutdb plan`, `spxcutdb download`, and `spxcutdb validate` before photometry
+- `download_failed`: downloader state from the download module; inspect and retry there
+- `validation_failed`: validation blocker from the validation module; repair or redownload before photometry
+- `calibration_missing`: record a calibration blocker and keep the cutout by default
+
+Planner output is an action list, not a failure report. For example:
+
+```text
+Photometry plan: {'cutout_valid_measurement_missing': 594}
+```
+
+means 594 cutouts are already downloaded, FITS-valid, and calibration-ready,
+but matching photometry rows have not been written yet. Fix it through the
+integrated workflow, or start with one downstream-only source if you want a
+smoke check:
+
+```bash
+spxcutdb run --project ./ --source-name <Name> --download-missing --resume --qa-level full --cleanup-cutouts never --verbose
+spxcutdb photometry source --project ./ --source-name <Name> --qa-level full --cleanup-cutouts none
+```
+
+After a successful run, `spxcutdb photometry plan --project ./` should move
+those items to `photometry_valid`. If the state remains
+`cutout_valid_measurement_missing`, run
+`spxcutdb photometry validate-results --project ./` and inspect the source
+failure rows before redownloading cutouts.
+
+If the planner reports `cutout_missing_or_invalid`, do not expect photometry to
+download the missing files. Use the integrated run:
+
+```bash
+spxcutdb run --project ./ --download-missing --resume --cleanup-cutouts success-after-source
+```
+
+or rebuild the download plan and use the expert downloader path:
+
+```bash
+spxcutdb plan --project ./ --export-plan
+spxcutdb download --project ./ --max-workers 8 --verbose
+spxcutdb validate --project ./ --update-db
+spxcutdb photometry plan --project ./
+```
+
+For one source:
+
+```bash
+spxcutdb plan --project ./ --source-name <Name> --export-plan
+spxcutdb download --project ./ --max-workers 8 --verbose
+spxcutdb validate --project ./ --update-db
+spxcutdb photometry source --project ./ --source-name <Name> --qa-level full --cleanup-cutouts none
+```
+
+The resumable identity includes source, cutout identity, cutout SHA256,
+validation state, calibration identity, photometry config hash, code version,
+and output schema version. A valid photometry result prevents future
+remeasurement for that same identity. Valid local cutouts are measured in place;
+photometry never redownloads them.
+
+To deliberately remeasure rows that are already `photometry_valid`, preview the
+rerun plan and then use the rerun shortcut:
+
+```bash
+spxcutdb photometry plan --project ./ --force-rerun --source-name <Name>
+spxcutdb photometry rerun --project ./ --source-name <Name> --qa-level full --cleanup-cutouts none
+spxcutdb photometry rerun --project ./ --qa-level standard --max-source-workers 8
+```
+
+`photometry rerun` reuses the same science workflow and current
+config/code/schema identity, but it does not skip matching measurement rows.
+If successful cutouts were deleted by earlier low-storage cleanup, use
+`spxcutdb run --download-missing --resume` to reacquire needed cutouts through
+the production downloader seam. Keep cutouts with `--cleanup-cutouts none` or
+`--cleanup-cutouts never` while debugging.
+
+To remove current photometry outputs and then run the normal measurement path
+again, use `clean-results`:
+
+```bash
+spxcutdb photometry clean-results --project ./ --source-name <Name> --dry-run
+spxcutdb photometry clean-results --project ./ --source-name <Name> --yes
+spxcutdb photometry plan --project ./ --source-name <Name>
+spxcutdb run --project ./ --source-name <Name> --download-missing --resume --qa-level full --cleanup-cutouts never
+```
+
+For a full project cleanup:
+
+```bash
+spxcutdb photometry clean-results --project ./ --all --dry-run
+spxcutdb photometry clean-results --project ./ --all --yes
+spxcutdb run --project ./ --download-missing --resume --qa-level standard --cleanup-cutouts success-after-source
+```
+
+This removes photometry measurements, work items, failure rows, source
+summaries, output-product registry rows, and generated `results/` photometry
+products. It does not delete downloaded cutout records or calibration products.
+
+Every usable cutout gets a target-only point-source forced flux at the catalog
+position. Negative and non-detected fluxes are preserved. Joint point-source
+deblending is only used for material neighbors; if the joint fit is singular or
+ill-conditioned, the target-only baseline remains recorded and the row is not
+science-recommended.
+
+Science wavelength and bandwidth come from calibration `CWAVE` and `CBAND`,
+preferably response-weighted. `WCS-WAVE` from the cutout remains diagnostic
+fallback only. Solid-angle maps are converted from arcsec2 to sr before
+MJy/sr-to-uJy/pixel conversion.
+
+## Photometry Config
+
+Common knobs:
+
+```yaml
+photometry:
+  output_root: results
+  fit_box_pixels: 15
+  psf_template_radius_pixels: 6
+  detection_snr_threshold: 3.0
+  qa_level: standard       # minimal, standard, full
+  output_schema_version: photometry_native_v6
+  code_version: photometry_psf_wls_v6_nozodi_failclosed_bkgfallback
+  background:
+    method: source_masked_plane
+    model: plane
+    engine: photutils
+    allow_plane: true
+    min_unmasked_pixels: 10
+    min_plane_pixels: 12
+    photutils_box_size: 16
+    photutils_filter_size: 3
+  deblending:
+    enabled: true
+    method: connected_components_target_protected
+    max_neighbors: 8
+    material_overlap_threshold: 0.05
+    residual_snr_threshold: 5.0
+  qa:
+    full_plot_workers: 32
+    measurement_plot_dpi: 110
+    measurement_plot_colorbars: false
+  extended:
+    enabled: false
+  cleanup:
+    delete_successful_cutouts: true
+    keep_failed_cutouts: true
+runtime:
+  max_source_workers: 64
+  max_download_workers: 32
+  max_fit_workers: 32
+  max_inflight_cutouts: 512
+  max_live_cutout_gb: 10.0
+  max_open_fits_files: 512
+  max_image_workers_per_source: 432
+  global_max_network_requests: 2048
+  global_max_open_fits_files: 512
+  event_flush_interval_sec: 5.0
+  sqlite_writer: manager
+```
+
+CLI overrides:
+
+```bash
+spxcutdb run --project ./ --source-name TDE_2026dmt --qa-level full --cleanup-cutouts never --verbose
+spxcutdb run --project ./ --limit-sources 20 --max-fit-workers 4 --cleanup-cutouts success-after-source
+spxcutdb photometry rerun --project ./ --source-name TDE_2026dmt --qa-level full --cleanup-cutouts none
+spxcutdb photometry clean-results --project ./ --source-name TDE_2026dmt --yes
+spxcutdb photometry plan --project ./ --source-id <source_id>
+```
+
+Use `--cleanup-cutouts never` on integrated runs or `--cleanup-cutouts none` on
+downstream photometry commands while debugging. Failed, invalid, and
+calibration-blocked cutouts are retained by default.
+
+For production speed, `spxcutdb run` overlaps file-level downloads and
+photometry through bounded queues. The manager owns SQLite writes, and each fit
+worker opens FITS files under the configured open-file limit.
+Integrated full QA uses the same bounded PNG writer as direct photometry:
+`spxcutdb run --qa-level full --qa-workers N` writes
+`results/qa/<source>/measurements/<measurement_id>_qa.png` after compact
+CSV/provenance/manifest outputs are durable. Cleanup waits for the full-QA
+manifest when full QA is requested. If a valid DB measurement is missing a full
+QA PNG and the cutout still exists, the run remeasures that item to regenerate
+the plot; if the cutout was already cleaned, it keeps the valid measurement and
+does not redownload only for QA.
+
+Direct `spxcutdb photometry run` uses process-backed measurement workers when
+`--max-source-workers` is greater than one, so CPU-bound fitting can use server
+cores. Use `--worker-backend thread` only as a debugging fallback. Full
+per-measurement QA PNGs are written by a separate bounded process pool; tune
+that output stage with `--qa-workers` or `photometry.qa.full_plot_workers`.
+For `--qa-level full`, the default worker count is automatically capped unless
+you explicitly pass `--max-source-workers`.
+The default full-QA PNG path omits expensive per-panel colorbars, writes at
+`measurement_plot_dpi: 110`, and annotates panel scales directly. Use
+`--qa-colorbars` only for publication/debug figures where the extra rendering
+cost is worth it. Batch progress shows the current phase and `qa=written/total`;
+`--verbose` also prints per-source timing and full-QA plot counts.
+
+## Output Products
+
+Per-source products are written under `results/`:
+
+- `results/spectra/<source_name>.csv`
+- `results/plots/<source_name>_sed.png`
+- `results/qa/<source_name>/<source_name>_qa_summary.png`
+- `results/qa/<source_name>/measurements/<measurement_id>_qa.png` when `--qa-level full`
+- `results/provenance/<source_name>_provenance.json`
+- `results/provenance/<source_name>_measurement_index.json`
+- `results/provenance/<source_name>_output_manifest.json`
+- `results/summaries/photometry_catalog_summary.csv`
+
+The CSV is compact and pandas-readable. Key fields include:
+
+- raw forced result: `point_flux_uJy`, `point_flux_err_uJy`
+- optional deblend result: `joint_flux_uJy`, `joint_flux_err_uJy`, `deblend_status`, `n_neighbors`
+- selected science result: `selected_flux_uJy`, `selected_flux_err_uJy`, `science_mode`
+- detection status: `detection_status`, `selected_snr`, `upper_limit_3sigma_uJy`
+- recommendation flag: `science_recommended`
+- calibration and identity: `cutout_sha256`, `spectral_wcs_calibration_id`, `solid_angle_calibration_id`, `calibration_match_quality`, `output_schema_version`, `photometry_code_version`
+- QA: `photometry_flags`, `fit_quality`, `fit_ql_mean_abs_2p5pix`, `chi2_reduced`, `fit_condition_number`, `background_model`, `background_ok`, `severe_flag`
+
+The raw measurement result, detection status, selected science result, and
+science recommendation flag are intentionally separate. A row can be a valid
+forced measurement without being a detection or science-recommended point.
+
+The output manifest records measurement IDs, row counts, output schema,
+photometry code version, effective config hash, and file checksums. A source
+output is current only when that manifest matches the DB rows and files.
+
+Scientific caveats:
+
+- Wavelength and bandwidth columns are in microns and are derived from
+  calibration `CWAVE` and `CBAND`.
+- Flux and flux-uncertainty columns are in microJy.
+- MJD fields come from FITS metadata when present and may be blank.
+- Use `science_recommended=true` for automated quality filtering; retained
+  false rows are audit products, not default science selections.
+- Redshift/rest-frame conversion is not applied by default.
+- Galactic extinction correction is not applied by default.
+- Do not combine old official FITS products and newly generated local CSV
+  products without checking `config_hash`, calibration IDs,
+  `output_schema_version`, `photometry_code_version`, and output manifests.
+
+## Downloader Workflow
+
+Discovery and download remain usable without photometry:
+
+```bash
+spxcutdb discover --project ./ --limit-sources 10 --concurrency 4 --verbose
+spxcutdb plan --project ./ --export-plan
+spxcutdb download --project ./ --max-workers 4 --retry-count 3 --timeout 120
+spxcutdb coverage --project ./
+spxcutdb export-manifest --project ./ --format csv --format parquet
+```
+
+Downloads show a progress bar by default. Use `--no-progress` to disable it,
+or `--quiet` for minimal terminal output.
+
+## Parallelism
+
+Discovery is parallelized by source. Each worker performs SIA2 discovery for
+one source across the configured collections. SQLite writes remain serialized
+in the main process.
+
+Downloads are parallelized by file/cutout row. Planned rows are flattened into
+individual file work items, downloaded with per-worker `requests.Session`
+objects, retried through a scheduler-owned delayed queue, atomically moved into
+place, and validated as each file finishes. SQLite writes remain serialized in
+the parent thread, so valid completed files are recorded immediately and can be
+skipped by a later resumed run even if another file from the same target is slow
+or retrying.
+
+Useful knobs:
+
+```yaml
+discovery:
+  concurrency: 4
+download:
+  concurrency: 4096
+  max_workers: 64
+  per_host_rate_limit_per_second: 4096
+  per_host_max_concurrency: 2048
+  min_download_rate_bytes_per_second: 0.0
+  low_speed_time_sec: 30
+  skip_existing: true
+  overwrite_existing: false
+```
+
+CLI overrides:
+
+```bash
+spxcutdb discover --project ./ --concurrency 8
+spxcutdb download --project ./ --max-workers 4 --retry-count 3 --timeout 120
+spxcutdb download --project ./ --max-workers 8 --per-host-rate-limit 5 --per-host-max-concurrency 8
+spxcutdb download --project ./ --max-workers 12 --min-rate-mib-per-sec 0.25 --low-speed-time 30
+spxcutdb download --project ./ --skip-existing
+spxcutdb download --project ./ --overwrite
+spxcutdb sync --project ./ --max-workers 4
+```
+
+`--concurrency` remains accepted for download commands as a compatibility alias,
+but `--max-workers` is the documented file worker setting. Downloads show
+file-level progress including active workers, queued files, delayed retries,
+failures, and bytes. `--verbose` prints per-file attempt count, HTTP status,
+retry delay, validation status, throughput, and failure reason, followed by a
+compact per-target summary.
+
+For large batches, slow trickle responses can pin workers even though bytes are
+still arriving. Use `--min-rate-mib-per-sec` with `--low-speed-time` to abort and
+requeue files that stay below a useful throughput floor.
+
+## CLI Help
+
+The most useful help entry points are:
+
+```bash
+spxcutdb --help
+spxcutdb calibration --help
+spxcutdb calib --help
+spxcutdb calibration sync --help
+spxcutdb photometry --help
+spxcutdb photometry plan --help
+spxcutdb photometry source --help
+spxcutdb photometry run --help
+spxcutdb photometry rerun --help
+spxcutdb photometry clean-results --help
+spxcutdb photometry validate-results --help
+spxcutdb config --help
+spxcutdb run --help
+spxcutdb summary --help
+```
+
+## No-Network Smoke Test
+
+The test fixture VOTable can exercise discovery and planning without live IRSA
+network access:
+
+```bash
+spxcutdb init ./smoke_spherex --catalog examples/input_catalog.csv --target-id-column Name --force
+spxcutdb config validate --project ./smoke_spherex
+spxcutdb validate --project ./smoke_spherex --catalog examples/input_catalog.csv
+spxcutdb run \
+  --project ./smoke_spherex \
+  --catalog examples/input_catalog.csv \
+  --discover \
+  --mock-sia examples/mock_sia_response.xml \
+  --no-download \
+  --dry-run \
+  --no-progress
+spxcutdb summary --project ./smoke_spherex
+```
+
+Photometry smoke coverage is in the test suite because it needs synthetic FITS
+cutouts plus calibration products:
+
+```bash
+python -m pytest tests/test_photometry_pipeline.py -q
+```
+
+## Development Checks
+
+```bash
+python -m pytest -q
+spxcutdb --help
+python -m build
+```

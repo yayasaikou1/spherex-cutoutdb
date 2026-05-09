@@ -1,0 +1,53 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "spherex-cutoutdb"
+version = "1.0.0rc1"
+description = "SPHEREx catalog-to-spectrum cutout database and conservative PSF forced-photometry workflow."
+readme = "README.md"
+requires-python = ">=3.10"
+authors = [
+  {name = "spherex-cutoutdb contributors"}
+]
+dependencies = [
+  "astropy>=6.0",
+  "photutils>=2.0",
+  "pyvo>=1.5",
+  "astroquery>=0.4.10",
+  "requests>=2.31",
+  "pydantic>=2",
+  "PyYAML>=6",
+  "rich>=13",
+  "tqdm>=4.66",
+  "pandas>=1.5",
+  "pyarrow>=12",
+  "matplotlib>=3.7",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=7",
+  "pytest-cov>=4",
+  "responses>=0.25",
+  "build>=1",
+]
+
+[project.scripts]
+spxcutdb = "spherex_cutoutdb.cli:main"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+spherex_cutoutdb = ["schema.sql"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = [
+  "live_irsa: optional tests that contact live IRSA services",
+]

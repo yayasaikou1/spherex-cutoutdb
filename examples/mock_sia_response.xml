@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<VOTABLE version="1.3" xmlns="http://www.ivoa.net/xml/VOTable/v1.3">
+  <RESOURCE>
+    <TABLE>
+      <FIELD name="s_ra" datatype="double"/>
+      <FIELD name="s_dec" datatype="double"/>
+      <FIELD name="facility_name" datatype="char" arraysize="*"/>
+      <FIELD name="instrument_name" datatype="char" arraysize="*"/>
+      <FIELD name="dataproduct_subtype" datatype="char" arraysize="*"/>
+      <FIELD name="calib_level" datatype="int"/>
+      <FIELD name="dataproduct_type" datatype="char" arraysize="*"/>
+      <FIELD name="energy_bandpassname" datatype="char" arraysize="*"/>
+      <FIELD name="obs_id" datatype="char" arraysize="*"/>
+      <FIELD name="em_min" datatype="double"/>
+      <FIELD name="em_max" datatype="double"/>
+      <FIELD name="em_res_power" datatype="double"/>
+      <FIELD name="access_url" datatype="char" arraysize="*"/>
+      <FIELD name="access_format" datatype="char" arraysize="*"/>
+      <FIELD name="access_estsize" datatype="int"/>
+      <FIELD name="t_exptime" datatype="double"/>
+      <FIELD name="s_region" datatype="char" arraysize="*"/>
+      <FIELD name="obs_collection" datatype="char" arraysize="*"/>
+      <FIELD name="obs_release_date" datatype="char" arraysize="*"/>
+      <FIELD name="s_pixel_scale" datatype="double"/>
+      <FIELD name="t_min" datatype="double"/>
+      <FIELD name="t_max" datatype="double"/>
+      <FIELD name="obs_publisher_did" datatype="char" arraysize="*"/>
+      <FIELD name="cloud_access" datatype="char" arraysize="*"/>
+      <FIELD name="dist_to_point" datatype="double"/>
+      <DATA>
+        <TABLEDATA>
+          <TR>
+            <TD>210.80227</TD>
+            <TD>54.34895</TD>
+            <TD>SPHEREx</TD>
+            <TD>SPHEREx</TD>
+            <TD>spectral_image_mef</TD>
+            <TD>2</TD>
+            <TD>image</TD>
+            <TD>D3</TD>
+            <TD>obs_0073</TD>
+            <TD>7.5e-7</TD>
+            <TD>8.5e-7</TD>
+            <TD>41</TD>
+            <TD>https://irsa.ipac.caltech.edu/ibe/data/spherex/qr2/level2/2025W19_2B/level2_2025W19_2B_0073_2D3_spx_l2b-v20-2025-247.fits</TD>
+            <TD>image/fits</TD>
+            <TD>1024</TD>
+            <TD>120</TD>
+            <TD>CIRCLE ICRS 210.80227 54.34895 0.01</TD>
+            <TD>spherex_qr2</TD>
+            <TD>2026-01-01</TD>
+            <TD>6.2</TD>
+            <TD>60000.0</TD>
+            <TD>60000.1</TD>
+            <TD>ivo://irsa/spherex/obs_0073/D3</TD>
+            <TD>{&quot;s3&quot;:&quot;s3://nasa-irsa-spherex/example.fits&quot;}</TD>
+            <TD>0.0</TD>
+          </TR>
+        </TABLEDATA>
+      </DATA>
+    </TABLE>
+  </RESOURCE>
+</VOTABLE>

@@ -1,0 +1,271 @@
+project:
+  name: spherex_cutoutdb
+  root: .
+  database_path: db/cutoutdb.sqlite
+  data_root: data
+  manifest_root: manifests
+  log_root: logs
+  cache_root: cache
+
+catalog:
+  path: catalog/sources.csv
+  source_id_column: source_id
+  source_name_column: source_name
+  ra_column: ra_deg
+  dec_column: dec_deg
+  ra_unit: deg
+  dec_unit: deg
+  allow_missing_name: true
+  allow_duplicate_target_ids: false
+  generate_missing_source_id: true
+  duplicate_position_tolerance_arcsec: 0.2
+  optional_columns:
+    cutout_size_arcsec: cutout_size_arcsec
+    source_type: source_type
+    priority: priority
+    active: active
+    notes: notes
+
+spherex:
+  release: QR2
+  allowed_level: 2
+  product_type: spectral_image_mef
+
+discovery:
+  sia_endpoint: https://irsa.ipac.caltech.edu/SIA
+  collections:
+    - spherex_qr2
+    - spherex_qr2_deep
+  exclude_collections:
+    - spherex_qr2_cal
+  search_radius_arcsec: 1.0
+  maxrec_per_source_collection: 25000
+  concurrency: 4
+  response_format: votable
+  backend_preference:
+    - pyvo
+    - astroquery
+    - requests
+  retry:
+    attempts: 3
+    backoff_seconds: [2, 5, 15]
+    jitter_seconds: 1.0
+    retry_http_status: [408, 429, 500, 502, 503, 504]
+    honor_retry_after: true
+  cache_ttl_hours: 0.0
+
+cutouts:
+  default_size_arcsec: 180.0
+  size_column: cutout_size_arcsec
+  min_size_arcsec: 6.0
+  max_size_arcsec: 3600.0
+  size_unit_for_url: deg
+  use_parent_access_url: true
+  append_query_parameters:
+    center: "{ra_deg},{dec_deg}"
+    size: "{size_deg}"
+  preserve_psf_hdu_unmodified: true
+
+cloud:
+  prefer_cloud_for_full_products: true
+  prefer_cloud_for_cutouts: false
+  require_official_cloud_cutout_metadata: true
+  official_cutout_capability_key:
+  s3:
+    anonymous: true
+    expected_bucket: nasa-irsa-spherex
+    expected_region: us-east-1
+
+planning:
+  skip_existing_valid: true
+  redownload_invalid: true
+  version_policy: keep_all_mark_superseded
+  duplicate_parent_policy: unique_by_access_url
+  duplicate_cutout_policy: unique_by_source_product_size_center
+
+download:
+  concurrency: 4096
+  max_workers: 64
+  per_host_rate_limit_per_second: 4096.0
+  per_host_max_concurrency: 2048
+  connect_timeout_sec: 20
+  read_timeout_sec: 180
+  total_timeout_sec: 100000000.0
+  min_download_rate_bytes_per_second: 0.0
+  low_speed_time_sec: 30
+  chunk_size_bytes: 1048576
+  retry:
+    attempts: 4
+    backoff_seconds: [1, 2, 5, 15]
+    retry_http_status: [408, 429, 500, 502, 503, 504]
+    honor_retry_after: true
+    jitter_seconds: 1.0
+  partial_suffix: .part
+  atomic_rename: true
+  skip_existing: true
+  overwrite_existing: false
+  user_agent: spherex-cutoutdb/1.0.0rc1
+
+validation:
+  require_hdus: [IMAGE, FLAGS, VARIANCE, PSF, WCS-WAVE]
+  require_spatial_wcs: true
+  require_spectral_wcs_or_wcwave: true
+  require_psf_hdu: true
+  check_fits_verify: true
+  compute_sha256: true
+  record_header_cards:
+    - OBSID
+    - OBS_ID
+    - DETECTOR
+    - DETID
+    - VERSION
+    - PROCVER
+    - PROCDATE
+    - DATE
+    - DATE-OBS
+    - MJD-AVG
+    - MJD
+    - EXPID
+    - BAND
+    - FILTER
+    - CRPIX1
+    - CRPIX2
+    - CRPIX1A
+    - CRPIX2A
+  psf_header_issue_policy: warn_only
+
+logging:
+  verbose: false
+  rich: true
+  progress_bars: true
+  jsonl_run_log: true
+  log_level: INFO
+
+exports:
+  formats: [csv, parquet]
+  write_latest_symlinks: true
+
+workflow:
+  source_chunk_size: 100
+  download_missing: true
+  skip_valid_measurements: true
+  regenerate_missing_outputs: true
+
+cleanup:
+  cutouts: success-after-source
+  keep_failed_cutouts: true
+
+# Photometry calibration cache. The science path requires Spectral WCS
+# products with CWAVE/CBAND and solid-angle pixel maps. Use
+# `spxcutdb calibration sync --input-dir ...` to import an existing cache, or
+# let `spxcutdb calibration sync --product required` discover and download the
+# official IRSA IBE QR2 calibration directories. product_urls remains available
+# for local mirrors or custom URL/file templates expanded with {detector},
+# {release}, {release_lower}, and {product_type}.
+calibration:
+  release: QR2
+  required_products: [spectral_wcs, solid_angle_pixel_map]
+  optional_products: []
+  cache_root: cache/calibrations
+  version_policy: exact_required
+  allow_latest_fallback: false
+  validate_on_use: true
+  download_source: cloud
+  prefer_cloud: true
+  cloud_bucket: nasa-irsa-spherex
+  cloud_region: us-east-1
+  cloud_prefix: "{release_lower}"
+  official_ibe_base_url: https://irsa.ipac.caltech.edu/ibe/data/spherex/{release_lower}
+  official_ibe_listing_url: https://irsa.ipac.caltech.edu/ibe/dir/list/spherex/{release_lower}
+  use_official_ibe: true
+  download_max_workers: 64
+  download_timeout_sec: 180
+  product_urls: {}
+
+# Downstream forced-photometry settings. Point-source PSF forced photometry is
+# always written for usable cutouts; detection_status and science_recommended
+# are separate fields. Negative forced fluxes are preserved.
+photometry:
+  output_root: results
+  default_cutout_size_arcsec: 180.0
+  fit_box_pixels: 15
+  psf_template_radius_pixels: 6
+  detection_snr_threshold: 3.0
+  qa_level: standard
+  output_schema_version: photometry_native_v6
+  code_version: photometry_psf_wls_v6_nozodi_failclosed_bkgfallback
+  background:
+    method: source_masked_plane
+    model: plane
+    engine: photutils
+    allow_plane: true
+    min_unmasked_pixels: 10
+    min_plane_pixels: 12
+    plane_condition_number_max: 100000000.0
+    sigma_clip: 3.0
+    sigma_clip_iterations: 2
+    photutils_box_size: 16
+    photutils_filter_size: 3
+    photutils_exclude_percentile: 80.0
+  masks:
+    fit_exclude_bits: [SUR_ERROR, NONFUNC, MISSING_DATA, HOT, COLD, NONLINEAR, PERSIST]
+    background_exclude_bits: [TRANSIENT, OVERFLOW, SUR_ERROR, NONFUNC, MISSING_DATA, HOT, COLD, NONLINEAR, PERSIST, OUTLIER, SOURCE]
+    qa_propagate_bits: []
+    science_blocker_bits: [OVERFLOW, SUR_ERROR, NONFUNC, DICHROIC, MISSING_DATA, HOT, COLD, NONLINEAR, PERSIST]
+    footprint_threshold: 0.01
+    target_protection_footprint_threshold: 0.2
+    target_protection_radius_pixels: 2.0
+    target_protection_dilate_pixels: 1
+    source_finding_edge_buffer_pixels: 1
+  psf:
+    oversampling_factor: 10
+    require_zone_center_header: true
+    allow_plane0_without_centers: false
+  fit:
+    condition_number_max: 100000000.0
+    min_template_fraction_unmasked: 0.5
+    central_radius_pixels: 2.0
+    central_positive_residual_sigma: 3.0
+    target_neighbor_correlation_max: 0.9
+    uncertainty_inflation_max: 3.0
+    science_fit_quality_max: 3.0
+  deblending:
+    enabled: true
+    method: connected_components_target_protected
+    max_neighbors: 8
+    material_overlap_threshold: 0.05
+    residual_snr_threshold: 5.0
+    neighbor_flux_snr_threshold: 5.0
+    min_component_pixels: 1
+    merge_radius_pixels: 2.0
+    min_distance_from_target_pixels: 2.0
+    reject_components_touching_target_protection: true
+  qa:
+    full_plot_layout: point_vs_joint_with_background
+    full_plot_workers: 32
+    measurement_plot_dpi: 110
+    measurement_plot_colorbars: false
+  extended:
+    enabled: false
+    require_user_morphology: true
+    recommend_only_if_isolated: true
+  cleanup:
+    delete_successful_cutouts: true
+    keep_failed_cutouts: true
+
+# High-throughput runtime defaults. Direct `photometry run --qa-level full`
+# automatically caps source concurrency unless `--max-source-workers` is
+# explicit, while integrated runs still use bounded queues and serialized
+# manager-side SQLite writes.
+runtime:
+  max_source_workers: 64
+  max_download_workers: 32
+  max_fit_workers: 32
+  max_inflight_cutouts: 512
+  max_live_cutout_gb: 10.0
+  max_open_fits_files: 512
+  max_image_workers_per_source: 432
+  global_max_network_requests: 2048
+  global_max_open_fits_files: 512
+  event_flush_interval_sec: 5.0
+  sqlite_writer: manager

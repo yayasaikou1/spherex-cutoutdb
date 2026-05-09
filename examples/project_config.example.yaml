@@ -1,0 +1,28 @@
+catalog:
+  path: examples/input_catalog.csv
+  source_id_column: Name
+  source_name_column: Name
+  ra_column: RA_deg
+  dec_column: DEC_deg
+  allow_missing_name: false
+  allow_duplicate_target_ids: false
+  generate_missing_source_id: false
+
+workflow:
+  download_missing: true
+  skip_valid_measurements: true
+  regenerate_missing_outputs: true
+
+runtime:
+  max_download_workers: 4
+  max_fit_workers: 1
+  max_inflight_cutouts: 32
+  max_live_cutout_gb: 1.0
+  max_open_fits_files: 8
+
+cleanup:
+  cutouts: success-after-source
+  keep_failed_cutouts: true
+
+photometry:
+  qa_level: standard
