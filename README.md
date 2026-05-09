@@ -1,19 +1,19 @@
 # spherex-cutoutdb
+`1.0.0rc1`
 
-Release candidate: `1.0.0rc1`.
+**Turn target catalogs into ready-to-inspect SPHEREx cutouts and spectra.**
 
-`spherex-cutoutdb` maintains a local SQLite-backed database of SPHEREx
-Level-2 Spectral Image MEF cutouts for a source catalog. It discovers parent
-products through the official IRSA SIA2 service, plans documented on-prem IRSA
-cutout URLs, downloads missing cutouts, validates FITS metadata, and exports
-manifests.
+`spherex-cutoutdb` is a command-line Python tool for building local SPHEREx
+cutout databases from input catalogs and extracting fixed-position PSF
+photometry into per-source spectra.
 
-The package also includes a downstream SPHEREx photometry layer. Photometry
-uses the downloader's validated cutouts and never creates its own downloader.
-It plans work before network activity, resolves the required calibration
-products, performs fixed-position point-source PSF forced photometry, writes
-per-source science products, and can delete temporary successful cutouts only
-after durable outputs validate.
+> [!NOTE]
+> This is a release candidate. The CLI, configuration schema, database schema,
+> and output schema may still change before `v1.0.0`.
+
+> [!IMPORTANT]
+> This package is not an official SPHEREx pipeline. Inspect QA outputs before
+> using derived measurements for scientific analysis.
 
 ## Install
 
