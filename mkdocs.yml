@@ -1,21 +1,31 @@
 site_name: spherex-cutoutdb
-site_description: SPHEREx catalog-to-spectrum cutout database and conservative PSF forced-photometry workflow
-repo_url: https://github.com/<OWNER>/<REPO>
+site_description: SPHEREx cutout database and download workflow for reproducible scientific analysis.
+site_url: https://spherex-cutoutdb.readthedocs.io/
+
+repo_url: https://github.com/yayasaikou1/spherex-cutoutdb
+repo_name: yayasaikou1/spherex-cutoutdb
+
 theme:
-  name: mkdocs
+  name: readthedocs
+  features:
+    - navigation.sections
+    - navigation.indexes
+    - navigation.top
+    - content.code.copy
+    - search.suggest
+    - search.highlight
+
 nav:
   - Home: index.md
+  - Installation: INSTALL_HELP.md
   - Quickstart: quickstart.md
-  - Integrated Workflow: INTEGRATED_WORKFLOW_TUTORIAL.md
-  - Photometry Tutorial: PHOTOMETRY_TUTORIAL.md
-  - CLI Reference: cli_reference.md
-  - Configuration: config_reference.md
-  - Calibration: calibration.md
-  - Science Method: science_method.md
-  - Output Schema: output_schema.md
-  - QA Flags: qa_flags.md
-  - Batch Runs: batch_runs.md
+  - INTEGRATED_WORKFLOW_TUTORIAL: INTEGRATED_WORKFLOW_TUTORIAL.md
   - Troubleshooting: troubleshooting.md
-  - Release Notes: release_notes.md
-  - Release Process: release_process.md
+  - Chinese Tutorial: tutorials_SC.md
 
+markdown_extensions:
+  - admonition
+  - tables
+  - fenced_code
+  - toc:
+      permalink: true
