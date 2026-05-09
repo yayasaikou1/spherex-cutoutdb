@@ -1,7 +1,6 @@
 # spherex-cutoutdb
-`1.0.0rc1`
-
 **Turn target catalogs into ready-to-inspect SPHEREx cutouts and spectra.**
+[![Documentation Status](https://readthedocs.org/projects/spherex-cutoutdb/badge/?version=latest)](https://spherex-cutoutdb.readthedocs.io/en/latest/?badge=latest)
 
 `spherex-cutoutdb` is a command-line Python tool for building local SPHEREx
 cutout databases from input catalogs and extracting fixed-position PSF
